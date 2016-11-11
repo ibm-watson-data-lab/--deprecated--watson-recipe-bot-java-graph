@@ -40,10 +40,8 @@ public class SousChef {
 
     public void run() throws Exception {
         this.slackSession.connect();
-        this.slackSession.addMessagePostedListener(new SlackMessagePostedListener()
-        {
-            public void onEvent(SlackMessagePosted event, SlackSession session)
-            {
+        this.slackSession.addMessagePostedListener(new SlackMessagePostedListener() {
+            public void onEvent(SlackMessagePosted event, SlackSession session) {
                 SlackChannel channel = event.getChannel();
                 String messageContent = event.getMessageContent();
                 SlackUser messageSender = event.getSender();
