@@ -1,5 +1,7 @@
 package com.ibm.cdslabs.watson.recipe.bot;
 
+import com.ibm.graph.client.IBMGraphClient;
+
 import java.util.Map;
 
 /**
@@ -9,7 +11,9 @@ import java.util.Map;
 public class App {
     public static void main( String[] args ) throws Exception {
         Map env = System.getenv();
+        IBMGraphClient graphClient = new IBMGraphClient();
         SousChef sousChef = new SousChef(
+                graphClient,
                 env.get("SLACK_BOT_TOKEN").toString(),
                 env.get("SLACK_BOT_ID").toString(),
                 env.get("SPOONACULAR_KEY").toString(),
