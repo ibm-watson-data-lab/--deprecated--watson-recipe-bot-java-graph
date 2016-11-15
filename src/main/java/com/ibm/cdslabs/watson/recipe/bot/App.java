@@ -4,16 +4,12 @@ import com.ibm.graph.client.IBMGraphClient;
 
 import java.util.Map;
 
-/**
- * Hello world!
- *
- */
 public class App {
+
     public static void main( String[] args ) throws Exception {
         Map env = System.getenv();
-        IBMGraphClient graphClient = new IBMGraphClient();
         SousChef sousChef = new SousChef(
-                graphClient,
+                new RecipeGraph(new IBMGraphClient()),
                 env.get("SLACK_BOT_TOKEN").toString(),
                 env.get("SLACK_BOT_ID").toString(),
                 env.get("SPOONACULAR_KEY").toString(),
@@ -25,4 +21,5 @@ public class App {
         System.in.read();
         sousChef.stop();
     }
+
 }
