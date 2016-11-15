@@ -66,9 +66,21 @@ public class RecipeGraph {
         state.setLastGraphVertex(userVertex);
     }
 
+    public void deleteUsers(String[] userIds) throws Exception {
+        for (String userId : userIds) {
+            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"person\").has(\"name\", \"" + userId + "\")");
+            if (elements.length > 0) {
+                for (Element element : elements) {
+                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
+                    logger.debug(String.format("Deleted user %s = %s", userId, success));
+                }
+            }
+        }
+    }
+
     // Ingredients
 
-    public String getUniqueIngredientsName(final String ingredientsStr) {
+    private String getUniqueIngredientsName(final String ingredientsStr) {
         String[] ingredients = ingredientsStr.trim().toLowerCase().split(",");
         for (int i = 0; i < ingredients.length; i++) {
             ingredients[i] = ingredients[i].trim();
@@ -91,9 +103,21 @@ public class RecipeGraph {
         return ingredientVertex;
     }
 
+    public void deleteIngredients(String[] ingredients) throws Exception {
+        for (String ingredient : ingredients) {
+            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"ingredient\").has(\"name\", \"" + ingredient + "\")");
+            if (elements.length > 0) {
+                for (Element element : elements) {
+                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
+                    logger.debug(String.format("Deleted ingredient %s = %s", ingredient, success));
+                }
+            }
+        }
+    }
+
     // Cuisine
 
-    public String getUniqueCuisineName(final String cuisine) {
+    private String getUniqueCuisineName(final String cuisine) {
         return cuisine.trim().toLowerCase();
     }
 
@@ -111,9 +135,21 @@ public class RecipeGraph {
         return cuisineVertex;
     }
 
+    public void deleteCuisines(String[] cuisines) throws Exception {
+        for (String cuisine : cuisines) {
+            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"cuisine\").has(\"name\", \"" + cuisine + "\")");
+            if (elements.length > 0) {
+                for (Element element : elements) {
+                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
+                    logger.debug(String.format("Deleted cuisine %s = %s", cuisine, success));
+                }
+            }
+        }
+    }
+
     // Recipe
 
-    public String getUniqueRecipeName(final String recipeId) {
+    private String getUniqueRecipeName(final String recipeId) {
         return recipeId.trim().toLowerCase();
     }
 
@@ -132,9 +168,21 @@ public class RecipeGraph {
         state.setLastGraphVertex(recipeVertex);
     }
 
+    public void deleteRecipes(String[] recipes) throws Exception {
+        for (String recipe : recipes) {
+            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"recipe\").has(\"name\", \"" + recipe + "\")");
+            if (elements.length > 0) {
+                for (Element element : elements) {
+                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
+                    logger.debug(String.format("Deleted recipe %s = %s", recipe, success));
+                }
+            }
+        }
+    }
+
     // Graph Helper Methods
 
-    public Vertex findVertex(String label, String propertyName, String propertyValue) throws Exception {
+    private Vertex findVertex(String label, String propertyName, String propertyValue) throws Exception {
         String query = "g.V().hasLabel(\"" + label + "\").has(\"" + propertyName + "\", \"" + propertyValue + "\")";
         Element[] elements = this.graphClient.runGremlinQuery(query);
         if (elements.length > 0) {
@@ -145,7 +193,7 @@ public class RecipeGraph {
         }
     }
 
-    public Vertex addVertexIfNotExists(Vertex vertex, String uniquePropertyName) throws Exception {
+    private Vertex addVertexIfNotExists(Vertex vertex, String uniquePropertyName) throws Exception {
         String propertyValue = vertex.getProperties().get(uniquePropertyName).toString();
         String query = "g.V().hasLabel(\"" + vertex.getLabel() + "\").has(\"" + uniquePropertyName + "\", \"" + propertyValue + "\")";
         Element[] elements = this.graphClient.runGremlinQuery(query);
@@ -159,62 +207,11 @@ public class RecipeGraph {
         }
     }
 
-    public void addEdgeIfNotExists(Edge edge) throws Exception {
+    private void addEdgeIfNotExists(Edge edge) throws Exception {
         String query = "g.V(" + edge.getOutV() + ").outE().inV().hasId(" + edge.getInV() + ")";
         Element[] elements = this.graphClient.runGremlinQuery(query);
         if (elements.length == 0 || !(elements[0] instanceof Vertex)) {
             this.graphClient.addEdge(edge);
         }
     }
-
-    // Delete
-
-    public void deleteUsers(String[] userIds) throws Exception {
-        for (String userId : userIds) {
-            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"person\").has(\"name\", \"" + userId + "\")");
-            if (elements.length > 0) {
-                for (Element element : elements) {
-                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
-                    logger.debug(String.format("Deleted user %s = %s", userId, success));
-                }
-            }
-        }
-    }
-
-    public void deleteIngredients(String[] ingredients) throws Exception {
-        for (String ingredient : ingredients) {
-            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"ingredient\").has(\"name\", \"" + ingredient + "\")");
-            if (elements.length > 0) {
-                for (Element element : elements) {
-                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
-                    logger.debug(String.format("Deleted ingredient %s = %s", ingredient, success));
-                }
-            }
-        }
-    }
-
-    public void deleteCuisines(String[] cuisines) throws Exception {
-        for (String cuisine : cuisines) {
-            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"cuisine\").has(\"name\", \"" + cuisine + "\")");
-            if (elements.length > 0) {
-                for (Element element : elements) {
-                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
-                    logger.debug(String.format("Deleted cuisine %s = %s", cuisine, success));
-                }
-            }
-        }
-    }
-
-    public void deleteRecipes(String[] recipes) throws Exception {
-        for (String recipe : recipes) {
-            Element[] elements = this.graphClient.runGremlinQuery("g.V().hasLabel(\"recipe\").has(\"name\", \"" + recipe + "\")");
-            if (elements.length > 0) {
-                for (Element element : elements) {
-                    boolean success = this.graphClient.deleteVertex(((Vertex) element).getId());
-                    logger.debug(String.format("Deleted recipe %s = %s", recipe, success));
-                }
-            }
-        }
-    }
-
 }
