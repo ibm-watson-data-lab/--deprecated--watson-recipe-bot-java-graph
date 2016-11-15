@@ -16,6 +16,8 @@ import com.ullink.slack.simpleslackapi.impl.SlackSessionFactory;
 import com.ullink.slack.simpleslackapi.listeners.SlackMessagePostedListener;
 import org.apache.wink.json4j.JSONArray;
 import org.apache.wink.json4j.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
@@ -31,6 +33,8 @@ public class SousChef {
     private RecipeClient recipeClient;
     private ConversationService conversationService;
     private HashMap<String,UserState> userStateMap = new HashMap<String, UserState>();
+
+    private static Logger logger =  LoggerFactory.getLogger(SousChef.class);
 
     public SousChef(IBMGraphClient graphClient, String slackToken, String slackBotId, String recipeClientApiKey, String conversationUsername, String conversationPassword, String conversationWorkspaceId) {
         this.graphClient = graphClient;
@@ -60,7 +64,7 @@ public class SousChef {
                         }
                     }
                     else {
-                        System.out.println("Received my message.");
+                        logger.debug("Received my message.");
                     }
                 }
             }
@@ -72,7 +76,7 @@ public class SousChef {
     }
 
     private void initGraph() throws Exception {
-        System.out.println("Getting Graph Schema...");
+        logger.debug("Getting Graph Schema...");
         Schema schema = this.graphClient.getSchema();
         boolean schemaExists = (schema != null && schema.getPropertyKeys() != null && schema.getPropertyKeys().length > 0);
         if (! schemaExists) {
@@ -96,9 +100,9 @@ public class SousChef {
                     },
                     new EdgeIndex[]{}
             );
-            System.out.println("Creating Graph Schema...");
+            logger.debug("Creating Graph Schema...");
             this.graphClient.saveSchema(schema);
-            System.out.println("Graph Schema created.");
+            logger.debug("Graph Schema created.");
         }
     }
 
@@ -140,7 +144,7 @@ public class SousChef {
         this.slackSession.sendMessage(channel, reply);
     }
 
-    //
+    // Messages from Bot
 
     private String handleStartMessage(UserState state, MessageResponse response) throws Exception {
         String reply = "";
@@ -152,37 +156,58 @@ public class SousChef {
     }
 
     private String handleIngredientsMessage(UserState state, String message) throws Exception {
-        // get list of recipes from Spoonacular based on message from Slack (message = list of ingredients)
+        // we want to get a list of recipes based on the ingredients (message)
+        // first we see if we already have the ingredients in our graph
         String ingredientsStr = message;
-        JSONArray recipes = null;
-        if (state.getConversationContext().containsKey("get_recipes")) {
-            recipes = this.recipeClient.findByIngredients(ingredientsStr);
-            state.getConversationContext().put("recipes",recipes);
+        JSONArray matchingRecipes = null;
+        Vertex ingredientVertex = this.findIngredientsVertex(ingredientsStr);
+        if (ingredientVertex != null) {
+            logger.debug(String.format("Ingredients vertex exists for %s. Returning recipes from vertex.",ingredientsStr));
+            matchingRecipes = new JSONArray(ingredientVertex.getPropertyValue("detail").toString());
         }
+        else {
+            // we don't have the ingredients in our graph yet, so get list of recipes from Spoonacular
+            logger.debug(String.format("Ingredients vertex does not exist for %s. Querying Spoonacular for recipes.",ingredientsStr));
+            matchingRecipes = this.recipeClient.findByIngredients(ingredientsStr);
+            // add vertex for the ingredients to our graph
+            ingredientVertex = this.addIngredientsVertex(state, ingredientsStr, matchingRecipes);
+        }
+        // update state
+        state.getConversationContext().put("recipes", matchingRecipes);
+        state.setLastGraphVertex(ingredientVertex);
+        // return the response
         String response = "Let's see here...\nI've found these recipes: \n";
-        for (int i=0; i<recipes.length(); i++) {
-            response += (i+1) + ". " + recipes.getJSONObject(i).getString("title") + "\n";
+        for (int i=0; i<matchingRecipes.length(); i++) {
+            response += (i+1) + ". " + matchingRecipes.getJSONObject(i).getString("title") + "\n";
         }
         response += "\nPlease enter the corresponding number of your choice.";
-        // add vertex for ingredient
-        this.addIngredientsVertex(state, ingredientsStr);
-        // return response to send to user
         return response;
     }
 
     private String handleSelectionMessage(UserState state, int selection) throws Exception {
+        // we want to get a the recipe based on the selection
+        // first we see if we already have the recipe in our graph
         ArrayList recipes = (ArrayList)state.getConversationContext().get("recipes");
         String recipeId = ((Number)((AbstractMap)recipes.get(selection-1)).get("id")).intValue() + "";
-        JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
-        JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
-        String response = this.makeFormattedSteps(recipeInfo, recipeSteps);
-        // add vertex for recipe
-        this.addRecipeVertex(state, recipeId, recipeInfo.getString("title"));
+        String recipeDetail = null;
+        Vertex recipeVertex = this.findRecipeVertex(recipeId);
+        if (recipeVertex != null) {
+            logger.debug(String.format("Recipe vertex exists for %s. Returning recipe steps from vertex.",recipeId));
+            recipeDetail = recipeVertex.getPropertyValue("detail").toString();
+        }
+        else {
+            logger.debug(String.format("Recipe vertex does not exist for %s. Querying Spoonacular for details.",recipeId));
+            JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
+            JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
+            recipeDetail = this.makeFormattedSteps(recipeInfo, recipeSteps);
+            // add vertex for recipe
+            this.addRecipeVertex(state, recipeId, recipeInfo.getString("title"), recipeDetail);
+        }
         // clear out state
         state.setLastGraphVertex(null);
         state.setConversationContext(null);
         // return response
-        return response;
+        return recipeDetail;
     }
 
     private String handleCuisineMessage(UserState state, String cuisine) throws Exception {
@@ -226,21 +251,32 @@ public class SousChef {
         state.setLastGraphVertex(userVertex);
     }
 
-    private void addIngredientsVertex(UserState state, final String ingredientsStr) throws Exception {
-        // sort the ingredients so we can find exact matches and not duplicate vertices
+    // Ingredients
+
+    private String getUniqueIngredientsName(final String ingredientsStr) {
         String[] ingredients = ingredientsStr.trim().toLowerCase().split(",");
         for (int i=0; i<ingredients.length; i++) {
             ingredients[i] = ingredients[i].trim();
         }
         Arrays.sort(ingredients);
-        final String ingredientsSorted = String.join(",", ingredients);
+        return String.join(",", ingredients);
+    }
+
+    private Vertex findIngredientsVertex(final String ingredientsStr) throws Exception {
+        return findVertex("ingredient", "name", this.getUniqueIngredientsName(ingredientsStr));
+    }
+
+    private Vertex addIngredientsVertex(UserState state, final String ingredientsStr, final JSONArray matchingRecipes) throws Exception {
         Vertex ingredientVertex = new Vertex("ingredient", new HashMap() {{
-            put("name", ingredientsSorted);
+            put("name", getUniqueIngredientsName(ingredientsStr));
+            put("detail", matchingRecipes.toString());
         }});
         ingredientVertex = this.addVertexIfNotExists(ingredientVertex, "name");
         this.addEdgeIfNotExists(new Edge("selects", state.getLastGraphVertex().getId(), ingredientVertex.getId()));
-        state.setLastGraphVertex(ingredientVertex);
+        return ingredientVertex;
     }
+
+    // Cuisine
 
     private void addCuisineVertex(UserState state, final String cuisine) throws Exception {
         Vertex ingredientVertex = new Vertex("recipe", new HashMap() {{
@@ -251,23 +287,50 @@ public class SousChef {
         state.setLastGraphVertex(ingredientVertex);
     }
 
-    private void addRecipeVertex(UserState state, final String recipeId, final String recipeTitle) throws Exception {
+    // Recipe
+
+    private String getUniqueRecipeName(final String recipeId) {
+       return recipeId.trim().toLowerCase();
+    }
+
+    private Vertex findRecipeVertex(final String recipeId) throws Exception {
+        return findVertex("recipe", "name", getUniqueRecipeName(recipeId));
+    }
+
+    private void addRecipeVertex(UserState state, final String recipeId, final String recipeTitle, final String recipeDetail) throws Exception {
         Vertex recipeVertex = new Vertex("recipe", new HashMap() {{
-            put("name", recipeId.trim().toLowerCase());
+            put("name", getUniqueRecipeName(recipeId));
             put("title", recipeTitle.trim());
+            put("detail", recipeDetail);
         }});
         recipeVertex = this.addVertexIfNotExists(recipeVertex, "name");
         this.addEdgeIfNotExists(new Edge("selects", state.getLastGraphVertex().getId(), recipeVertex.getId()));
         state.setLastGraphVertex(recipeVertex);
     }
 
+    // Graph Helper Methods
+
+    private Vertex findVertex(String label, String propertyName, String propertyValue) throws Exception {
+        String query = "g.V().hasLabel(\"" + label + "\").has(\"" + propertyName +"\", \"" + propertyValue + "\")";
+        Element[] elements = this.graphClient.runGremlinQuery(query);
+        if (elements.length > 0) {
+            return (Vertex)elements[0];
+        }
+        else {
+            return null;
+        }
+    }
+
     private Vertex addVertexIfNotExists(Vertex vertex, String uniquePropertyName) throws Exception {
-        String query = "g.V().hasLabel(\"" + vertex.getLabel() + "\").has(\"" + uniquePropertyName +"\", \"" + vertex.getProperties().get(uniquePropertyName) + "\")";
+        String propertyValue = vertex.getProperties().get(uniquePropertyName).toString();
+        String query = "g.V().hasLabel(\"" + vertex.getLabel() + "\").has(\"" + uniquePropertyName +"\", \"" + propertyValue + "\")";
         Element[] elements = this.graphClient.runGremlinQuery(query);
         if (elements.length == 0 || !(elements[0] instanceof Vertex)) {
+            logger.debug(String.format("Adding %s vertex where %s=%s",vertex.getLabel(),uniquePropertyName,propertyValue));
             return this.graphClient.addVertex(vertex);
         }
         else {
+            logger.debug(String.format("Return %s vertex where %s=%s",vertex.getLabel(),uniquePropertyName,propertyValue));
             return (Vertex)elements[0];
         }
     }
