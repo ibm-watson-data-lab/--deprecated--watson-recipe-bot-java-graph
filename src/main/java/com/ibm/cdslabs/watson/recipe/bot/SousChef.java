@@ -4,6 +4,7 @@ import com.ibm.graph.client.Edge;
 import com.ibm.graph.client.Element;
 import com.ibm.graph.client.IBMGraphClient;
 import com.ibm.graph.client.Vertex;
+import com.ibm.graph.client.schema.*;
 import com.ibm.watson.developer_cloud.conversation.v1.ConversationService;
 import com.ibm.watson.developer_cloud.conversation.v1.model.MessageRequest;
 import com.ibm.watson.developer_cloud.conversation.v1.model.MessageResponse;
@@ -42,6 +43,7 @@ public class SousChef {
     }
 
     public void run() throws Exception {
+        this.initGraph();
         this.slackSession.connect();
         this.slackSession.addMessagePostedListener(new SlackMessagePostedListener() {
             public void onEvent(SlackMessagePosted event, SlackSession session) {
@@ -67,6 +69,37 @@ public class SousChef {
 
     public void stop() throws Exception {
         this.slackSession.disconnect();
+    }
+
+    private void initGraph() throws Exception {
+        System.out.println("Getting Graph Schema...");
+        Schema schema = this.graphClient.getSchema();
+        boolean schemaExists = (schema != null && schema.getPropertyKeys() != null && schema.getPropertyKeys().length > 0);
+        if (! schemaExists) {
+            schema = new Schema(
+                    new PropertyKey[] {
+                            new PropertyKey("name", "String", "SINGLE"),
+                            new PropertyKey("title", "String", "SINGLE"),
+                            new PropertyKey("detail", "String", "SINGLE")
+                    },
+                    new VertexLabel[] {
+                            new VertexLabel("person"),
+                            new VertexLabel("ingredient"),
+                            new VertexLabel("cuisine"),
+                            new VertexLabel("recipe")
+                    },
+                    new EdgeLabel[] {
+                            new EdgeLabel("selects")
+                    },
+                    new VertexIndex[] {
+                            new VertexIndex("vertexByName", new String[]{"name"}, true, true)
+                    },
+                    new EdgeIndex[]{}
+            );
+            System.out.println("Creating Graph Schema...");
+            this.graphClient.saveSchema(schema);
+            System.out.println("Graph Schema created.");
+        }
     }
 
     private void processSlackMessage(String messageSender, String message, SlackChannel channel) throws Exception {
@@ -195,7 +228,7 @@ public class SousChef {
 
     private void addIngredientsVertex(UserState state, final String ingredientsStr) throws Exception {
         // sort the ingredients so we can find exact matches and not duplicate vertices
-        String[] ingredients = ingredientsStr.trim().split(",");
+        String[] ingredients = ingredientsStr.trim().toLowerCase().split(",");
         for (int i=0; i<ingredients.length; i++) {
             ingredients[i] = ingredients[i].trim();
         }
