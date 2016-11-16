@@ -89,8 +89,6 @@ public class SousChef {
             reply = this.handleIngredientsMessage(state, message);
         }
         else if (state.getConversationContext().containsKey("is_selection") && Boolean.TRUE.equals(state.getConversationContext().get("is_selection"))) {
-            state.getConversationContext().put("selection_valid", Boolean.FALSE);
-            reply = "Invalid selection! Say anything to see your choices again...";
             int selection = -1;
             if (state.getConversationContext().containsKey("selection")) {
                 try {
@@ -99,12 +97,9 @@ public class SousChef {
                 catch (Exception ex) {
                 }
             }
-            if (selection >= 1 && selection <= 5) {
-                state.getConversationContext().put("selection_valid", Boolean.FALSE);
-                reply = this.handleSelectionMessage(state, selection);
-            }
+            reply = this.handleSelectionMessage(state, selection);
         }
-        else if (response.getEntities() != null && response.getEntities().size() > 0 && response.getEntities().get(0).getEntity() == "cuisine") {
+        else if (response.getEntities() != null && response.getEntities().size() > 0 && response.getEntities().get(0).getEntity().equalsIgnoreCase("cuisine")) {
             String cuisine = response.getEntities().get(0).getValue();
             reply = this.handleCuisineMessage(state, cuisine);
         }
@@ -117,11 +112,13 @@ public class SousChef {
     // Messages from Bot
 
     private String handleStartMessage(UserState state, MessageResponse response) throws Exception {
+        if (state.getLastGraphVertex() == null) {
+            this.recipeGraph.addUserVertex(state);
+        }
         String reply = "";
         for (String text : ((ArrayList<String>) response.getOutput().get("text"))) {
             reply += text + "\n";
         }
-        this.recipeGraph.addUserVertex(state);
         return reply;
     }
 
@@ -154,32 +151,6 @@ public class SousChef {
         return response;
     }
 
-    private String handleSelectionMessage(UserState state, int selection) throws Exception {
-        // we want to get a the recipe based on the selection
-        // first we see if we already have the recipe in our graph
-        ArrayList recipes = (ArrayList) state.getConversationContext().get("recipes");
-        String recipeId = ((Number) ((AbstractMap) recipes.get(selection - 1)).get("id")).intValue() + "";
-        String recipeDetail = null;
-        Vertex recipeVertex = this.recipeGraph.findRecipeVertex(recipeId);
-        if (recipeVertex != null) {
-            logger.debug(String.format("Recipe vertex exists for %s. Returning recipe steps from vertex.", recipeId));
-            recipeDetail = recipeVertex.getPropertyValue("detail").toString();
-        }
-        else {
-            logger.debug(String.format("Recipe vertex does not exist for %s. Querying Spoonacular for details.", recipeId));
-            JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
-            JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
-            recipeDetail = this.makeFormattedSteps(recipeInfo, recipeSteps);
-            // add vertex for recipe
-            this.recipeGraph.addRecipeVertex(state, recipeId, recipeInfo.getString("title"), recipeDetail);
-        }
-        // clear out state
-        state.setLastGraphVertex(null);
-        state.setConversationContext(null);
-        // return response
-        return recipeDetail;
-    }
-
     private String handleCuisineMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the cuisine (message)
         // first we see if we already have the cuisine in our graph
@@ -207,6 +178,38 @@ public class SousChef {
         }
         response += "\nPlease enter the corresponding number of your choice.";
         return response;
+    }
+
+    private String handleSelectionMessage(UserState state, int selection) throws Exception {
+        if (selection >= 1 && selection <= 5) {
+            // we want to get a the recipe based on the selection
+            // first we see if we already have the recipe in our graph
+            ArrayList recipes = (ArrayList) state.getConversationContext().get("recipes");
+            String recipeId = ((Number) ((AbstractMap) recipes.get(selection - 1)).get("id")).intValue() + "";
+            String recipeDetail = null;
+            Vertex recipeVertex = this.recipeGraph.findRecipeVertex(recipeId);
+            if (recipeVertex != null) {
+                logger.debug(String.format("Recipe vertex exists for %s. Returning recipe steps from vertex.", recipeId));
+                recipeDetail = recipeVertex.getPropertyValue("detail").toString();
+            }
+            else {
+                logger.debug(String.format("Recipe vertex does not exist for %s. Querying Spoonacular for details.", recipeId));
+                JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
+                JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
+                recipeDetail = this.makeFormattedSteps(recipeInfo, recipeSteps);
+                // add vertex for recipe
+                this.recipeGraph.addRecipeVertex(state, recipeId, recipeInfo.getString("title"), recipeDetail);
+            }
+            // clear out state
+            state.setLastGraphVertex(null);
+            state.setConversationContext(null);
+            // return response
+            return recipeDetail;
+        }
+        else {
+            state.getConversationContext().put("selection_valid", Boolean.FALSE);
+            return "Invalid selection! Say anything to see your choices again...";
+        }
     }
 
     private String makeFormattedSteps(JSONObject recipeInfo, JSONArray recipeSteps) throws Exception {
