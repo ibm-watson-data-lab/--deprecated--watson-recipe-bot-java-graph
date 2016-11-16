@@ -202,7 +202,7 @@ public class RecipeGraph {
             return this.graphClient.addVertex(vertex);
         }
         else {
-            logger.debug(String.format("Return %s vertex where %s=%s", vertex.getLabel(), uniquePropertyName, propertyValue));
+            logger.debug(String.format("Returning %s vertex where %s=%s", vertex.getLabel(), uniquePropertyName, propertyValue));
             return (Vertex) elements[0];
         }
     }

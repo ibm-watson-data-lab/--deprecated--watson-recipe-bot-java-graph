@@ -181,7 +181,7 @@ public class SousChef {
     }
 
     private String handleCuisineMessage(UserState state, String message) throws Exception {
-        // we want to get a list of recipes based on the cuisine
+        // we want to get a list of recipes based on the cuisine (message)
         // first we see if we already have the cuisine in our graph
         String cuisine = message;
         JSONArray matchingRecipes = null;
