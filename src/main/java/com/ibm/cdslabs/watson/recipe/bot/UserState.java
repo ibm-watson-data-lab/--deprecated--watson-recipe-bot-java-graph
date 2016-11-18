@@ -10,7 +10,8 @@ import java.util.Map;
 public class UserState {
 
     private String userId;
-    private Vertex lastGraphVertex;
+    private Vertex userVertex;
+    private Vertex ingredientCuisineIndex;
     private Map<String,Object> conversationContext;
 
     public UserState(String userId) {
@@ -21,12 +22,20 @@ public class UserState {
         return userId;
     }
 
-    public Vertex getLastGraphVertex() {
-        return lastGraphVertex;
+    public Vertex getUserVertex() {
+        return userVertex;
     }
 
-    public void setLastGraphVertex(Vertex lastGraphVertex) {
-        this.lastGraphVertex = lastGraphVertex;
+    public void setUserVertex(Vertex userVertex) {
+        this.userVertex = userVertex;
+    }
+
+    public Vertex getIngredientCuisineIndex() {
+        return ingredientCuisineIndex;
+    }
+
+    public void setIngredientCuisineIndex(Vertex ingredientCuisineIndex) {
+        this.ingredientCuisineIndex = ingredientCuisineIndex;
     }
 
     public Map<String, Object> getConversationContext() {

@@ -1,16 +1,15 @@
 package com.ibm.cdslabs.watson.recipe.bot;
 
-import com.ibm.graph.client.Edge;
-import com.ibm.graph.client.Element;
-import com.ibm.graph.client.IBMGraphClient;
-import com.ibm.graph.client.Vertex;
+import com.ibm.graph.client.*;
 import com.ibm.graph.client.schema.*;
 import org.apache.wink.json4j.JSONArray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 /**
  * Created by markwatson on 11/15/16.
@@ -58,12 +57,11 @@ public class RecipeGraph {
 
     // User
 
-    public void addUserVertex(final UserState state) throws Exception {
+    public Vertex addUserVertex(final String userId) throws Exception {
         Vertex userVertex = new Vertex("person", new HashMap() {{
-            put("name", state.getUserId());
+            put("name", userId);
         }});
-        userVertex = this.addVertexIfNotExists(userVertex, "name");
-        state.setLastGraphVertex(userVertex);
+        return this.addVertexIfNotExists(userVertex, "name");
     }
 
     public void deleteUsers(String[] userIds) throws Exception {
@@ -93,14 +91,21 @@ public class RecipeGraph {
         return findVertex("ingredient", "name", this.getUniqueIngredientsName(ingredientsStr));
     }
 
-    public Vertex addIngredientsVertex(UserState state, final String ingredientsStr, final JSONArray matchingRecipes) throws Exception {
+    public Vertex addIngredientsVertex(final String ingredientsStr, final JSONArray matchingRecipes, Vertex userVertex) throws Exception {
         Vertex ingredientVertex = new Vertex("ingredient", new HashMap() {{
             put("name", getUniqueIngredientsName(ingredientsStr));
             put("detail", matchingRecipes.toString());
         }});
         ingredientVertex = this.addVertexIfNotExists(ingredientVertex, "name");
-        this.addEdgeIfNotExists(new Edge("selects", state.getLastGraphVertex().getId(), ingredientVertex.getId()));
+        this.incrementIngredientEdge(ingredientVertex, userVertex);
         return ingredientVertex;
+    }
+
+    public void incrementIngredientEdge(Vertex ingredientVertex, Vertex userVertex) throws Exception {
+        Edge ingredientEdge = new Edge("selects", userVertex.getId(), ingredientVertex.getId(), new HashMap() {{
+            put("count", new Integer(1));
+        }});
+        this.addUpdateEdge(ingredientEdge);
     }
 
     public void deleteIngredients(String[] ingredients) throws Exception {
@@ -125,13 +130,13 @@ public class RecipeGraph {
         return findVertex("cuisine", "name", this.getUniqueCuisineName(cuisine));
     }
 
-    public Vertex addCuisineVertex(UserState state, final String cuisine, final JSONArray matchingRecipes) throws Exception {
+    public Vertex addCuisineVertex(final String cuisine, final JSONArray matchingRecipes, Vertex userVertex) throws Exception {
         Vertex cuisineVertex = new Vertex("cuisine", new HashMap() {{
             put("name", getUniqueCuisineName(cuisine));
             put("detail", matchingRecipes.toString());
         }});
         cuisineVertex = this.addVertexIfNotExists(cuisineVertex, "name");
-        this.addEdgeIfNotExists(new Edge("selects", state.getLastGraphVertex().getId(), cuisineVertex.getId()));
+        this.incrementCuisineEdge(cuisineVertex, userVertex);
         return cuisineVertex;
     }
 
@@ -147,6 +152,13 @@ public class RecipeGraph {
         }
     }
 
+    public void incrementCuisineEdge(Vertex cuisineVertex, Vertex userVertex) throws Exception {
+        Edge cuisineEdge = new Edge("selects", userVertex.getId(), cuisineVertex.getId(), new HashMap() {{
+            put("count", new Integer(1));
+        }});
+        this.addUpdateEdge(cuisineEdge);
+    }
+
     // Recipe
 
     private String getUniqueRecipeName(final String recipeId) {
@@ -157,15 +169,41 @@ public class RecipeGraph {
         return findVertex("recipe", "name", getUniqueRecipeName(recipeId));
     }
 
-    public void addRecipeVertex(UserState state, final String recipeId, final String recipeTitle, final String recipeDetail) throws Exception {
+    public Path[] findRecipesForUser(String userId) throws Exception {
+        List<Path> pathList = new ArrayList<Path>();
+        String query = "g.V().hasLabel(\"person\").has(\"name\", \"" + userId + "\").outE().inV().hasLabel(\"recipe\").path()";
+        Element[] elements = this.graphClient.runGremlinQuery(query);
+        if (elements.length > 0) {
+            for (Element element : elements) {
+                pathList.add((Path)element);
+            }
+        }
+        return pathList.toArray(new Path[0]);
+    }
+
+    public void addRecipeVertex(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
         Vertex recipeVertex = new Vertex("recipe", new HashMap() {{
             put("name", getUniqueRecipeName(recipeId));
             put("title", recipeTitle.trim());
             put("detail", recipeDetail);
         }});
         recipeVertex = this.addVertexIfNotExists(recipeVertex, "name");
-        this.addEdgeIfNotExists(new Edge("selects", state.getLastGraphVertex().getId(), recipeVertex.getId()));
-        state.setLastGraphVertex(recipeVertex);
+        this.incrementRecipeEdges(recipeVertex, ingredientCuisineVertex, userVertex);
+    }
+
+    public void incrementRecipeEdges(Vertex recipeVertex, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
+        // add one edge from the user to the recipe (this will let us find a user's favorite recipes, etc)
+        Edge userRecipeEdge = new Edge("selects", userVertex.getId(), recipeVertex.getId(), new HashMap() {{
+            put("count", new Integer(1));
+        }});
+        this.addUpdateEdge(userRecipeEdge);
+        // add one edge from the ingredient/cuisine to the recipe
+        if (ingredientCuisineVertex != null) {
+            Edge ingredientCusisineRecipeEdge = new Edge("selects", ingredientCuisineVertex.getId(), recipeVertex.getId(), new HashMap() {{
+                put("count", new Integer(1));
+            }});
+            this.addUpdateEdge(ingredientCusisineRecipeEdge);
+        }
     }
 
     public void deleteRecipes(String[] recipes) throws Exception {
@@ -207,11 +245,21 @@ public class RecipeGraph {
         }
     }
 
-    private void addEdgeIfNotExists(Edge edge) throws Exception {
-        String query = "g.V(" + edge.getOutV() + ").outE().inV().hasId(" + edge.getInV() + ")";
+    private Edge addUpdateEdge(Edge edge) throws Exception {
+        String query = "g.V(" + edge.getOutV() + ").outE().inV().hasId(" + edge.getInV() + ").path()";
         Element[] elements = this.graphClient.runGremlinQuery(query);
-        if (elements.length == 0 || !(elements[0] instanceof Vertex)) {
-            this.graphClient.addEdge(edge);
+        if (elements.length == 0 || !(elements[0] instanceof Path)) {
+            return this.graphClient.addEdge(edge);
+        }
+        else {
+            edge = (Edge)((Path)elements[0]).getObjects()[1];
+            int count = 0;
+            try {
+                count = (Integer)edge.getPropertyValue("count");
+            }
+            catch(Exception ex) {}
+            edge.setPropertyValue("count", count+1);
+            return this.graphClient.updateEdge(edge);
         }
     }
 }

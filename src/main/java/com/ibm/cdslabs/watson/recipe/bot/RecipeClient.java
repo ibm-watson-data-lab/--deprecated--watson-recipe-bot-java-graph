@@ -134,7 +134,7 @@ public class RecipeClient {
             HttpEntity httpEntity = httpResponse.getEntity();
             String content = EntityUtils.toString(httpEntity);
             EntityUtils.consume(httpEntity);
-            return new JSONArray(content);
+            return new JSONArray(content).getJSONObject(0).getJSONArray("steps");
         }
         finally {
             try {
