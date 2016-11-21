@@ -111,7 +111,6 @@ public class SousChef {
         if (state.getUserVertex() == null) {
             Vertex userVertex = this.recipeGraph.addUserVertex(state.getUserId());
             state.setUserVertex(userVertex);
-            state.setIngredientCuisineIndex(userVertex);
         }
         String reply = "";
         for (String text : ((ArrayList<String>) response.getOutput().get("text"))) {
@@ -160,8 +159,8 @@ public class SousChef {
     private String handleIngredientsMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the ingredients (message)
         // first we see if we already have the ingredients in our graph
+        JSONArray matchingRecipes;
         String ingredientsStr = message;
-        JSONArray matchingRecipes = null;
         Vertex ingredientVertex = this.recipeGraph.findIngredientsVertex(ingredientsStr);
         if (ingredientVertex != null) {
             logger.debug(String.format("Ingredients vertex exists for %s. Returning recipes from vertex.", ingredientsStr));
@@ -191,8 +190,8 @@ public class SousChef {
     private String handleCuisineMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the cuisine (message)
         // first we see if we already have the cuisine in our graph
-        String cuisine = message;
         JSONArray matchingRecipes = null;
+        String cuisine = message;
         Vertex cuisineVertex = this.recipeGraph.findCuisineVertex(cuisine);
         if (cuisineVertex != null) {
             logger.debug(String.format("Cuisine vertex exists for %s. Returning recipes from vertex.", cuisine));
@@ -280,6 +279,7 @@ public class SousChef {
         else {
             response += "_No instructions available for this recipe._\n\n";
         }
+        response += "*Say anything to me to start over...*";
         return response;
     }
 }
