@@ -170,9 +170,9 @@ public class GraphRecipeStore {
         return findVertex("recipe", "name", getUniqueRecipeName(recipeId));
     }
 
-    public JSONArray findFavoriteRecipesForUser(String userId, int count) throws Exception {
+    public JSONArray findFavoriteRecipesForUser(Vertex userVertex, int count) throws Exception {
         List<Path> pathList = new ArrayList<Path>();
-        String query = "g.V().hasLabel(\"person\").has(\"name\", \"" + userId + "\").outE().inV().hasLabel(\"recipe\").path()";
+        String query = "g.V().hasLabel(\"person\").has(\"name\", \"" + userVertex.getPropertyValue("name") + "\").outE().inV().hasLabel(\"recipe\").path()";
         Element[] elements = this.graphClient.runGremlinQuery(query);
         if (elements.length > 0) {
             for (Element element : elements) {

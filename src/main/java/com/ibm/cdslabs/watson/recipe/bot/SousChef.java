@@ -120,7 +120,7 @@ public class SousChef {
     }
 
     private String handleFavoritesMessage(UserState state) throws Exception {
-        JSONArray recipes = this.recipeStore.findFavoriteRecipesForUser(state.getUserId(), 5);
+        JSONArray recipes = this.recipeStore.findFavoriteRecipesForUser(state.getUser(), 5);
         // update state
         state.getConversationContext().put("recipes", recipes);
         state.setIngredientCuisine(null);
