@@ -8,8 +8,13 @@ public class App {
 
     public static void main( String[] args ) throws Exception {
         Map env = System.getenv();
+        IBMGraphClient graphClient = new IBMGraphClient(
+                env.get("GRAPH_API_URL").toString(),
+                env.get("GRAPH_USERNAME").toString(),
+                env.get("GRAPH_PASSWORD").toString()
+        );
         SousChef sousChef = new SousChef(
-                new RecipeGraph(new IBMGraphClient()),
+                new GraphRecipeStore(graphClient),
                 env.get("SLACK_BOT_TOKEN").toString(),
                 env.get("SLACK_BOT_ID").toString(),
                 env.get("SPOONACULAR_KEY").toString(),

@@ -10,8 +10,8 @@ import java.util.Map;
 public class UserState {
 
     private String userId;
-    private Vertex userVertex;
-    private Vertex ingredientCuisineIndex;
+    private Vertex user;
+    private Vertex ingredientCuisine;
     private Map<String,Object> conversationContext;
 
     public UserState(String userId) {
@@ -22,20 +22,20 @@ public class UserState {
         return userId;
     }
 
-    public Vertex getUserVertex() {
-        return userVertex;
+    public Vertex getUser() {
+        return user;
     }
 
-    public void setUserVertex(Vertex userVertex) {
-        this.userVertex = userVertex;
+    public void setUser(Vertex user) {
+        this.user = user;
     }
 
-    public Vertex getIngredientCuisineIndex() {
-        return ingredientCuisineIndex;
+    public Vertex getIngredientCuisine() {
+        return ingredientCuisine;
     }
 
-    public void setIngredientCuisineIndex(Vertex ingredientCuisineIndex) {
-        this.ingredientCuisineIndex = ingredientCuisineIndex;
+    public void setIngredientCuisine(Vertex ingredientCuisine) {
+        this.ingredientCuisine = ingredientCuisine;
     }
 
     public Map<String, Object> getConversationContext() {

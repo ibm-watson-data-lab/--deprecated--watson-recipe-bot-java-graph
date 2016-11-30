@@ -21,7 +21,7 @@ import java.util.*;
  */
 public class SousChef {
 
-    private RecipeGraph recipeGraph;
+    private GraphRecipeStore recipeStore;
     private String slackBotId;
     private String conversationWorkspaceId;
     private SlackSession slackSession;
@@ -31,8 +31,8 @@ public class SousChef {
 
     private static Logger logger = LoggerFactory.getLogger(SousChef.class);
 
-    public SousChef(RecipeGraph recipeGraph, String slackToken, String slackBotId, String recipeClientApiKey, String conversationUsername, String conversationPassword, String conversationWorkspaceId) {
-        this.recipeGraph = recipeGraph;
+    public SousChef(GraphRecipeStore recipeStore, String slackToken, String slackBotId, String recipeClientApiKey, String conversationUsername, String conversationPassword, String conversationWorkspaceId) {
+        this.recipeStore = recipeStore;
         this.slackBotId = slackBotId;
         this.slackSession = SlackSessionFactory.createWebSocketSlackSession(slackToken);
         this.recipeClient = new RecipeClient(recipeClientApiKey);
@@ -42,7 +42,7 @@ public class SousChef {
     }
 
     public void run() throws Exception {
-        this.recipeGraph.initGraph();
+        this.recipeStore.init();
         this.slackSession.connect();
         this.slackSession.addMessagePostedListener((event, session) -> {
             SlackChannel channel = event.getChannel();
@@ -108,9 +108,9 @@ public class SousChef {
     // Messages from Bot
 
     private String handleStartMessage(UserState state, MessageResponse response) throws Exception {
-        if (state.getUserVertex() == null) {
-            Vertex userVertex = this.recipeGraph.addUserVertex(state.getUserId());
-            state.setUserVertex(userVertex);
+        if (state.getUser() == null) {
+            Vertex user = this.recipeStore.addUser(state.getUserId());
+            state.setUser(user);
         }
         String reply = "";
         for (String text : ((ArrayList<String>) response.getOutput().get("text"))) {
@@ -121,7 +121,7 @@ public class SousChef {
 
     private String handleFavoritesMessage(UserState state) throws Exception {
         JSONArray matchingRecipes = new JSONArray();
-        Path[] paths = this.recipeGraph.findRecipesForUser(state.getUserId());
+        Path[] paths = this.recipeStore.findRecipesForUser(state.getUserId());
         if (paths.length > 0) {
             Arrays.sort(paths, (path1, path2) -> {
                 int count1 = 1;
@@ -145,7 +145,7 @@ public class SousChef {
         }
         // update state
         state.getConversationContext().put("recipes", matchingRecipes);
-        state.setIngredientCuisineIndex(null);
+        state.setIngredientCuisine(null);
         // return the response
         String response = "Let's see here...\nI've found these recipes: \n";
         for (int i = 0; i < matchingRecipes.length(); i++) {
@@ -158,26 +158,26 @@ public class SousChef {
 
     private String handleIngredientsMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the ingredients (message)
-        // first we see if we already have the ingredients in our graph
+        // first we see if we already have the ingredients in our datastore
         JSONArray matchingRecipes;
         String ingredientsStr = message;
-        Vertex ingredientVertex = this.recipeGraph.findIngredientsVertex(ingredientsStr);
-        if (ingredientVertex != null) {
-            logger.debug(String.format("Ingredients vertex exists for %s. Returning recipes from vertex.", ingredientsStr));
-            matchingRecipes = new JSONArray(ingredientVertex.getPropertyValue("detail").toString());
-            // increment the count on the user-ingredient edge
-            this.recipeGraph.incrementIngredientEdge(ingredientVertex, state.getUserVertex());
+        Vertex ingredient = this.recipeStore.findIngredient(ingredientsStr);
+        if (ingredient != null) {
+            logger.debug(String.format("Ingredient exists for %s. Returning recipes from datastore.", ingredientsStr));
+            matchingRecipes = new JSONArray(ingredient.getPropertyValue("detail").toString());
+            // increment the count on the user-ingredient
+            this.recipeStore.incrementIngredientForUser(ingredient, state.getUser());
         }
         else {
-            // we don't have the ingredients in our graph yet, so get list of recipes from Spoonacular
-            logger.debug(String.format("Ingredients vertex does not exist for %s. Querying Spoonacular for recipes.", ingredientsStr));
+            // we don't have the ingredients in our datastore yet, so get list of recipes from Spoonacular
+            logger.debug(String.format("Ingredient does not exist for %s. Querying Spoonacular for recipes.", ingredientsStr));
             matchingRecipes = this.recipeClient.findByIngredients(ingredientsStr);
-            // add vertex for the ingredients to our graph
-            ingredientVertex = this.recipeGraph.addIngredientsVertex(ingredientsStr, matchingRecipes, state.getUserVertex());
+            // add ingredient to datastore
+            ingredient = this.recipeStore.addIngredient(ingredientsStr, matchingRecipes, state.getUser());
         }
         // update state
         state.getConversationContext().put("recipes", matchingRecipes);
-        state.setIngredientCuisineIndex(ingredientVertex);
+        state.setIngredientCuisine(ingredient);
         // return the response
         String response = "Let's see here...\nI've found these recipes: \n";
         for (int i = 0; i < matchingRecipes.length(); i++) {
@@ -189,26 +189,26 @@ public class SousChef {
 
     private String handleCuisineMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the cuisine (message)
-        // first we see if we already have the cuisine in our graph
+        // first we see if we already have the cuisine in our datastore
         JSONArray matchingRecipes = null;
-        String cuisine = message;
-        Vertex cuisineVertex = this.recipeGraph.findCuisineVertex(cuisine);
-        if (cuisineVertex != null) {
-            logger.debug(String.format("Cuisine vertex exists for %s. Returning recipes from vertex.", cuisine));
-            matchingRecipes = new JSONArray(cuisineVertex.getPropertyValue("detail").toString());
-            // increment the count on the user-cuisine edge
-            this.recipeGraph.incrementCuisineEdge(cuisineVertex, state.getUserVertex());
+        String cuisineStr = message;
+        Vertex cuisine = this.recipeStore.findCuisine(cuisineStr);
+        if (cuisine != null) {
+            logger.debug(String.format("Cuisine exists for %s. Returning recipes from datastore.", cuisineStr));
+            matchingRecipes = new JSONArray(cuisine.getPropertyValue("detail").toString());
+            // increment the count on the user-cuisine
+            this.recipeStore.incrementCuisineForUser(cuisine, state.getUser());
         }
         else {
-            // we don't have the cuisine in our graph yet, so get list of recipes from Spoonacular
-            logger.debug(String.format("Cuisine vertex does not exist for %s. Querying Spoonacular for recipes.", cuisine));
-            matchingRecipes = this.recipeClient.findByCuisine(cuisine);
-            // add vertex for the cuisine to our graph
-            cuisineVertex = this.recipeGraph.addCuisineVertex(cuisine, matchingRecipes, state.getUserVertex());
+            // we don't have the cuisine in our datastore yet, so get list of recipes from Spoonacular
+            logger.debug(String.format("Cuisine does not exist for %s. Querying Spoonacular for recipes.", cuisineStr));
+            matchingRecipes = this.recipeClient.findByCuisine(cuisineStr);
+            // add cuisine to datastore
+            cuisine = this.recipeStore.addCuisine(cuisineStr, matchingRecipes, state.getUser());
         }
         // update state
         state.getConversationContext().put("recipes", matchingRecipes);
-        state.setIngredientCuisineIndex(cuisineVertex);
+        state.setIngredientCuisine(cuisine);
         // return the response
         String response = "Let's see here...\nI've found these recipes: \n";
         for (int i = 0; i < matchingRecipes.length(); i++) {
@@ -221,27 +221,27 @@ public class SousChef {
     private String handleSelectionMessage(UserState state, int selection) throws Exception {
         if (selection >= 1 && selection <= 5) {
             // we want to get a the recipe based on the selection
-            // first we see if we already have the recipe in our graph
+            // first we see if we already have the recipe in our datastore
             ArrayList recipes = (ArrayList)state.getConversationContext().get("recipes");
             String recipeId = String.valueOf((int)Double.parseDouble(((AbstractMap)recipes.get(selection-1)).get("id").toString()));
             String recipeDetail;
-            Vertex recipeVertex = this.recipeGraph.findRecipeVertex(recipeId);
-            if (recipeVertex != null) {
-                logger.debug(String.format("Recipe vertex exists for %s. Returning recipe steps from vertex.", recipeId));
-                recipeDetail = recipeVertex.getPropertyValue("detail").toString();
-                // increment the count on the ingredient/cuisine-recipe edge and the user-recipe edge
-                this.recipeGraph.incrementRecipeEdges(recipeVertex, state.getIngredientCuisineIndex(), state.getUserVertex());
+            Vertex recipe = this.recipeStore.findRecipe(recipeId);
+            if (recipe != null) {
+                logger.debug(String.format("Recipe exists for %s. Returning recipe steps from datastore.", recipeId));
+                recipeDetail = recipe.getPropertyValue("detail").toString();
+                // increment the count on the ingredient/cuisine-recipe and the user-recipe
+                this.recipeStore.incrementRecipeForUser(recipe, state.getIngredientCuisine(), state.getUser());
             }
             else {
-                logger.debug(String.format("Recipe vertex does not exist for %s. Querying Spoonacular for details.", recipeId));
+                logger.debug(String.format("Recipe does not exist for %s. Querying Spoonacular for details.", recipeId));
                 JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
                 JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
                 recipeDetail = this.makeFormattedSteps(recipeInfo, recipeSteps);
-                // add vertex for recipe
-                this.recipeGraph.addRecipeVertex(recipeId, recipeInfo.getString("title"), recipeDetail, state.getIngredientCuisineIndex(), state.getUserVertex());
+                // add recipe to datastore
+                this.recipeStore.addRecipe(recipeId, recipeInfo.getString("title"), recipeDetail, state.getIngredientCuisine(), state.getUser());
             }
             // clear out state
-            state.setIngredientCuisineIndex(null);
+            state.setIngredientCuisine(null);
             state.setConversationContext(null);
             // return response
             return recipeDetail;
