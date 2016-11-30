@@ -3,6 +3,7 @@ package com.ibm.cdslabs.watson.recipe.bot;
 import com.ibm.graph.client.*;
 import com.ibm.graph.client.schema.*;
 import org.apache.wink.json4j.JSONArray;
+import org.apache.wink.json4j.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -169,7 +170,7 @@ public class GraphRecipeStore {
         return findVertex("recipe", "name", getUniqueRecipeName(recipeId));
     }
 
-    public Path[] findRecipesForUser(String userId) throws Exception {
+    public JSONArray findFavoriteRecipesForUser(String userId, int count) throws Exception {
         List<Path> pathList = new ArrayList<Path>();
         String query = "g.V().hasLabel(\"person\").has(\"name\", \"" + userId + "\").outE().inV().hasLabel(\"recipe\").path()";
         Element[] elements = this.graphClient.runGremlinQuery(query);
@@ -178,7 +179,35 @@ public class GraphRecipeStore {
                 pathList.add((Path)element);
             }
         }
-        return pathList.toArray(new Path[0]);
+        JSONArray recipes = new JSONArray();
+        Path[] paths = pathList.toArray(new Path[0]);
+        if (paths.length > 0) {
+            Arrays.sort(paths, (path1, path2) -> {
+                int count1 = 1;
+                int count2 = 1;
+                try {
+                    count1 = (Integer)path1.getObjects()[1].getPropertyValue("count");
+                }
+                catch(Exception ex) {}
+                try {
+                    count2 = (Integer)path2.getObjects()[1].getPropertyValue("count");
+                }
+                catch(Exception ex) {}
+                return Integer.compare(count2, count1); // reverse sort
+            });
+            int i = -1;
+            for (Path path : paths) {
+                ++i;
+                if (i >= count) {
+                    break;
+                }
+                JSONObject recipe = new JSONObject();
+                recipe.put("id", path.getObjects()[2].getPropertyValue("name"));
+                recipe.put("title", path.getObjects()[2].getPropertyValue("title"));
+                recipes.add(recipe);
+            }
+        }
+        return recipes;
     }
 
     public void addRecipe(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {

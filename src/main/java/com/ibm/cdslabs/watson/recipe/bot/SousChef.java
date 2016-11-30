@@ -120,36 +120,14 @@ public class SousChef {
     }
 
     private String handleFavoritesMessage(UserState state) throws Exception {
-        JSONArray matchingRecipes = new JSONArray();
-        Path[] paths = this.recipeStore.findRecipesForUser(state.getUserId());
-        if (paths.length > 0) {
-            Arrays.sort(paths, (path1, path2) -> {
-                int count1 = 1;
-                int count2 = 1;
-                try {
-                    count1 = (Integer)path1.getObjects()[1].getPropertyValue("count");
-                }
-                catch(Exception ex) {}
-                try {
-                    count2 = (Integer)path2.getObjects()[1].getPropertyValue("count");
-                }
-                catch(Exception ex) {}
-                return Integer.compare(count2, count1); // reverse sort
-            });
-            for (Path path : paths) {
-                JSONObject recipe = new JSONObject();
-                recipe.put("id", path.getObjects()[2].getPropertyValue("name"));
-                recipe.put("title", path.getObjects()[2].getPropertyValue("title"));
-                matchingRecipes.add(recipe);
-            }
-        }
+        JSONArray recipes = this.recipeStore.findFavoriteRecipesForUser(state.getUserId(), 5);
         // update state
-        state.getConversationContext().put("recipes", matchingRecipes);
+        state.getConversationContext().put("recipes", recipes);
         state.setIngredientCuisine(null);
         // return the response
         String response = "Let's see here...\nI've found these recipes: \n";
-        for (int i = 0; i < matchingRecipes.length(); i++) {
-            response += (i + 1) + ". " + matchingRecipes.getJSONObject(i).getString("title") + "\n";
+        for (int i = 0; i < recipes.length(); i++) {
+            response += (i + 1) + ". " + recipes.getJSONObject(i).getString("title") + "\n";
         }
         response += "\nPlease enter the corresponding number of your choice.";
         return response;
