@@ -1,6 +1,5 @@
 package com.ibm.cdslabs.watson.recipe.bot;
 
-import com.ibm.graph.client.Path;
 import com.ibm.graph.client.Vertex;
 import com.ibm.watson.developer_cloud.conversation.v1.ConversationService;
 import com.ibm.watson.developer_cloud.conversation.v1.model.MessageRequest;
@@ -144,7 +143,7 @@ public class SousChef {
             logger.debug(String.format("Ingredient exists for %s. Returning recipes from datastore.", ingredientsStr));
             matchingRecipes = new JSONArray(ingredient.getPropertyValue("detail").toString());
             // increment the count on the user-ingredient
-            this.recipeStore.incrementIngredientForUser(ingredient, state.getUser());
+            this.recipeStore.recordIngredientRequestForUser(ingredient, state.getUser());
         }
         else {
             // we don't have the ingredients in our datastore yet, so get list of recipes from Spoonacular
@@ -175,7 +174,7 @@ public class SousChef {
             logger.debug(String.format("Cuisine exists for %s. Returning recipes from datastore.", cuisineStr));
             matchingRecipes = new JSONArray(cuisine.getPropertyValue("detail").toString());
             // increment the count on the user-cuisine
-            this.recipeStore.incrementCuisineForUser(cuisine, state.getUser());
+            this.recipeStore.recordCuisineRequestForUser(cuisine, state.getUser());
         }
         else {
             // we don't have the cuisine in our datastore yet, so get list of recipes from Spoonacular
@@ -208,7 +207,7 @@ public class SousChef {
                 logger.debug(String.format("Recipe exists for %s. Returning recipe steps from datastore.", recipeId));
                 recipeDetail = recipe.getPropertyValue("detail").toString();
                 // increment the count on the ingredient/cuisine-recipe and the user-recipe
-                this.recipeStore.incrementRecipeForUser(recipe, state.getIngredientCuisine(), state.getUser());
+                this.recipeStore.recordRecipeRequestForUser(recipe, state.getIngredientCuisine(), state.getUser());
             }
             else {
                 logger.debug(String.format("Recipe does not exist for %s. Querying Spoonacular for details.", recipeId));
