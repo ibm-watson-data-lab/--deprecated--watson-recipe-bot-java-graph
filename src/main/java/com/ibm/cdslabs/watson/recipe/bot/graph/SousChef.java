@@ -1,4 +1,4 @@
-package com.ibm.cdslabs.watson.recipe.bot;
+package com.ibm.cdslabs.watson.recipe.bot.graph;
 
 import com.ibm.graph.client.Vertex;
 import com.ibm.watson.developer_cloud.conversation.v1.ConversationService;

@@ -1,4 +1,4 @@
-package com.ibm.cdslabs.watson.recipe.bot;
+package com.ibm.cdslabs.watson.recipe.bot.graph;
 
 import junit.framework.Test;
 import junit.framework.TestCase;

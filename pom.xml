@@ -16,7 +16,7 @@
   </build>
 
   <groupId>com.ibm.cdslabs.sample</groupId>
-  <artifactId>watson-recipe-bot</artifactId>
+  <artifactId>watson-recipe-bot-graph</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 

@@ -1,4 +1,4 @@
-package com.ibm.cdslabs.watson.recipe.bot;
+package com.ibm.cdslabs.watson.recipe.bot.graph;
 
 import com.ibm.graph.client.*;
 import com.ibm.graph.client.response.ResultSet;
@@ -270,7 +270,7 @@ public class GraphRecipeStore {
      */
     public JSONArray findFavoriteRecipesForUser(Vertex userVertex, int count) throws Exception {
         List<Path> pathList = new ArrayList<Path>();
-        String query = "g.V().hasLabel(\"person\").has(\"name\", \"" + userVertex.getPropertyValue("name") + "\").outE().inV().hasLabel(\"recipe\").path()";
+        String query = String.format("g.V().hasLabel(\"person\").has(\"name\", \"%s\").outE().order().by(\"count\", decr).inV().hasLabel(\"recipe\").limit(%d).path()", userVertex.getPropertyValue("name"), count);
         ResultSet resultSet = this.graphClient.executeGremlin(query);
         Iterator<JSONObject> iterator = resultSet.getJSONObjectResultIterator();
         while(iterator.hasNext()) {
@@ -280,25 +280,7 @@ public class GraphRecipeStore {
         JSONArray recipes = new JSONArray();
         Path[] paths = pathList.toArray(new Path[0]);
         if (paths.length > 0) {
-            Arrays.sort(paths, (path1, path2) -> {
-                int count1 = 1;
-                int count2 = 1;
-                try {
-                    count1 = (Integer)path1.getObjects()[1].getPropertyValue("count");
-                }
-                catch(Exception ex) {}
-                try {
-                    count2 = (Integer)path2.getObjects()[1].getPropertyValue("count");
-                }
-                catch(Exception ex) {}
-                return Integer.compare(count2, count1); // reverse sort
-            });
-            int i = -1;
             for (Path path : paths) {
-                ++i;
-                if (i >= count) {
-                    break;
-                }
                 JSONObject recipe = new JSONObject();
                 recipe.put("id", path.getObjects()[2].getPropertyValue("name"));
                 recipe.put("title", path.getObjects()[2].getPropertyValue("title"));

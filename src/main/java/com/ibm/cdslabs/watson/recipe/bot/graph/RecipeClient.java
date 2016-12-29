@@ -1,4 +1,4 @@
-package com.ibm.cdslabs.watson.recipe.bot;
+package com.ibm.cdslabs.watson.recipe.bot.graph;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;

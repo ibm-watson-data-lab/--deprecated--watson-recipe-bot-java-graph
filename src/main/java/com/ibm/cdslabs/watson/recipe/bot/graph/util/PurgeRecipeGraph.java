@@ -1,6 +1,6 @@
-package com.ibm.cdslabs.watson.recipe.bot.util;
+package com.ibm.cdslabs.watson.recipe.bot.graph.util;
 
-import com.ibm.cdslabs.watson.recipe.bot.GraphRecipeStore;
+import com.ibm.cdslabs.watson.recipe.bot.graph.GraphRecipeStore;
 import com.ibm.graph.client.IBMGraphClient;
 
 public class PurgeRecipeGraph {
