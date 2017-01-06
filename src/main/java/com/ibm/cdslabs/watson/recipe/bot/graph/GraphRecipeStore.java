@@ -17,6 +17,7 @@ import java.util.*;
 public class GraphRecipeStore {
 
     private IBMGraphClient graphClient;
+    private String graphId;
 
     private static Logger logger = LoggerFactory.getLogger(GraphRecipeStore.class);
 
@@ -24,8 +25,9 @@ public class GraphRecipeStore {
      * Creates a new instance of GraphRecipeStore.
      * @param graphClient - The instance of the IBM Graph Client to use
      */
-    public GraphRecipeStore(IBMGraphClient graphClient) {
+    public GraphRecipeStore(IBMGraphClient graphClient, String graphId) {
         this.graphClient = graphClient;
+        this.graphId = graphId;
     }
 
     /**
@@ -33,7 +35,15 @@ public class GraphRecipeStore {
      * @throws Exception
      */
     public void init() throws Exception {
-        logger.debug("Getting Graph Schema...");
+        logger.debug("Getting graphs...");
+        String[] graphIds = this.graphClient.getGraphs();
+        boolean graphExists = Arrays.asList(graphIds).contains(this.graphId);
+        if (! graphExists) {
+            logger.debug(String.format("Creating graph %s...", this.graphId));
+            this.graphClient.createGraph(this.graphId);
+        }
+        this.graphClient.setGraph(this.graphId);
+        logger.debug("Getting graph schema...");
         Schema schema = this.graphClient.getSchema();
         boolean schemaExists = (schema != null && schema.getPropertyKeys() != null && schema.getPropertyKeys().length > 0);
         if (!schemaExists) {
@@ -280,10 +290,12 @@ public class GraphRecipeStore {
         JSONArray recipes = new JSONArray();
         Path[] paths = pathList.toArray(new Path[0]);
         if (paths.length > 0) {
+            Vertex recipeVertex;
             for (Path path : paths) {
+                recipeVertex = (Vertex)path.getObjects()[2];
                 JSONObject recipe = new JSONObject();
-                recipe.put("id", path.getObjects()[2].getPropertyValue("name"));
-                recipe.put("title", path.getObjects()[2].getPropertyValue("title"));
+                recipe.put("id", recipeVertex.getPropertyValue("name"));
+                recipe.put("title", recipeVertex.getPropertyValue("title"));
                 recipes.add(recipe);
             }
         }

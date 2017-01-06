@@ -14,7 +14,7 @@ public class App {
                 env.get("GRAPH_PASSWORD").toString()
         );
         SousChef sousChef = new SousChef(
-                new GraphRecipeStore(graphClient),
+                new GraphRecipeStore(graphClient, env.get("GRAPH_ID").toString()),
                 env.get("SLACK_BOT_TOKEN").toString(),
                 env.get("SLACK_BOT_ID").toString(),
                 env.get("SPOONACULAR_KEY").toString(),
