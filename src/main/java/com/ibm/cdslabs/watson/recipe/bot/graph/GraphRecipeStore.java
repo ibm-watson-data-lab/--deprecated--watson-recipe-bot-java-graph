@@ -24,6 +24,7 @@ public class GraphRecipeStore {
     /**
      * Creates a new instance of GraphRecipeStore.
      * @param graphClient - The instance of the IBM Graph Client to use
+     * @param graphId - The id of the graph to use
      */
     public GraphRecipeStore(IBMGraphClient graphClient, String graphId) {
         this.graphClient = graphClient;
@@ -31,7 +32,7 @@ public class GraphRecipeStore {
     }
 
     /**
-     * Creates and initializes the Graph schema.
+     * Creates and initializes the Graph and Graph schema.
      * @throws Exception
      */
     public void init() throws Exception {
@@ -279,24 +280,77 @@ public class GraphRecipeStore {
      * @throws Exception
      */
     public JSONArray findFavoriteRecipesForUser(Vertex userVertex, int count) throws Exception {
-        List<Path> pathList = new ArrayList<Path>();
-        String query = String.format("g.V().hasLabel(\"person\").has(\"name\", \"%s\").outE().order().by(\"count\", decr).inV().hasLabel(\"recipe\").limit(%d).path()", userVertex.getPropertyValue("name"), count);
+        String query = String.format("g.V().hasLabel(\"person\").has(\"name\", \"%s\").outE().order().by(\"count\", decr).inV().hasLabel(\"recipe\").limit(%d)", userVertex.getPropertyValue("name"), count);
+        ResultSet resultSet = this.graphClient.executeGremlin(query);
+        Iterator<Vertex> iterator = resultSet.getVertexResultIterator();
+        JSONArray recipes = new JSONArray();
+        while(iterator.hasNext()) {
+            Vertex recipeVertex = iterator.next();
+            JSONObject recipe = new JSONObject();
+            recipe.put("id", recipeVertex.getPropertyValue("name"));
+            recipe.put("title", recipeVertex.getPropertyValue("title"));
+            recipes.add(recipe);
+        }
+        return recipes;
+    }
+
+    /**
+     * Recommends recipes based on popular recipes using the specified ingredient.
+     * @param ingredientsStr - The ingredient or comma-separated list of ingredients specified by the user
+     * @param userVertex - The Graph vertex for the user requesting recommended recipes
+     * @param count - The max number of recipes to return
+     * @return - A JSONArray of recipes
+     * @throws Exception
+     */
+    public JSONArray findRecommendedRecipesForIngredient(String ingredientsStr, Vertex userVertex, int count) throws Exception {
+        ingredientsStr = this.getUniqueIngredientsName(ingredientsStr);
+        String query = "g.V().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\")";
+        query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
+        query += ".outE().has(\"count\",gt(1)).inV().hasLabel(\"recipe\")";
+        query += ".inE().outV().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\").path()";
+        return getRecommendedRecipes(query, count);
+    }
+
+    /**
+     * Recommends recipes based on popular recipes using the specified ingredient.
+     * @param cuisine - The cuisine specified by the user
+     * @param userVertex - The Graph vertex for the user requesting recommended recipes
+     * @param count - The max number of recipes to return
+     * @return - A JSONArray of recipes
+     * @throws Exception
+     */
+    public JSONArray findRecommendedRecipesForCuisine(String cuisine, Vertex userVertex, int count) throws Exception {
+        cuisine = this. getUniqueCuisineName(cuisine);
+        String query = "g.V().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\")";
+        query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
+        query += ".outE().has(\"count\",gt(1)).inV().hasLabel(\"recipe\")";
+        query += ".inE().outV().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\").path()";
+        return getRecommendedRecipes(query, count);
+    }
+
+    private JSONArray getRecommendedRecipes(String query, int count) throws Exception {
         ResultSet resultSet = this.graphClient.executeGremlin(query);
         Iterator<JSONObject> iterator = resultSet.getJSONObjectResultIterator();
+        HashMap<String,JSONObject> recipeHash = new HashMap<>();
+        JSONArray recipes = new JSONArray();
         while(iterator.hasNext()) {
             Path path = Path.fromJSONObject(iterator.next());
-            pathList.add(path);
-        }
-        JSONArray recipes = new JSONArray();
-        Path[] paths = pathList.toArray(new Path[0]);
-        if (paths.length > 0) {
-            Vertex recipeVertex;
-            for (Path path : paths) {
-                recipeVertex = (Vertex)path.getObjects()[2];
-                JSONObject recipe = new JSONObject();
-                recipe.put("id", recipeVertex.getPropertyValue("name"));
+            Vertex recipeVertex = (Vertex)path.getObjects()[4];
+            String recipeId = recipeVertex.getPropertyValue("name").toString();
+            JSONObject recipe = recipeHash.get(recipeId);
+            if (recipe == null) {
+                if (recipes.length() >= count) {
+                    continue;
+                }
+                recipe = new JSONObject();
+                recipe.put("id", recipeId);
                 recipe.put("title", recipeVertex.getPropertyValue("title"));
+                recipe.put("recommendedUserCount", 1);
                 recipes.add(recipe);
+                recipeHash.put(recipeId, recipe);
+            }
+            else {
+                recipe.put("recommendedUserCount",recipe.getInt("recommendedUserCount") + 1);
             }
         }
         return recipes;
@@ -309,9 +363,10 @@ public class GraphRecipeStore {
      * @param recipeDetail - The detailed instructions for making the recipe
      * @param ingredientCuisineVertex - The existing Graph vertex for either the ingredient or cuisine selected before the recipe
      * @param userVertex - The existing Graph vertex for the user
+     * @return - The recipe vertex
      * @throws Exception
      */
-    public void addRecipe(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
+    public Vertex addRecipe(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
         Vertex recipeVertex = new Vertex("recipe", new HashMap() {{
             put("name", getUniqueRecipeName(recipeId));
             put("title", recipeTitle.trim());
@@ -319,6 +374,7 @@ public class GraphRecipeStore {
         }});
         recipeVertex = this.addVertexIfNotExists(recipeVertex, "name");
         this.recordRecipeRequestForUser(recipeVertex, ingredientCuisineVertex, userVertex);
+        return recipeVertex;
     }
 
     /**

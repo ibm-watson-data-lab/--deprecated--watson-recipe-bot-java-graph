@@ -26,11 +26,14 @@ public class SousChef {
     private SlackSession slackSession;
     private RecipeClient recipeClient;
     private ConversationService conversationService;
+    private SnsClient snsClient;
     private HashMap<String, UserState> userStateMap = new HashMap<String, UserState>();
+
+    private final static int MAX_RECIPES = 5;
 
     private static Logger logger = LoggerFactory.getLogger(SousChef.class);
 
-    public SousChef(GraphRecipeStore recipeStore, String slackToken, String slackBotId, String recipeClientApiKey, String conversationUsername, String conversationPassword, String conversationWorkspaceId) {
+    public SousChef(GraphRecipeStore recipeStore, String slackToken, String slackBotId, String recipeClientApiKey, String conversationUsername, String conversationPassword, String conversationWorkspaceId, SnsClient snsClient) {
         this.recipeStore = recipeStore;
         this.slackBotId = slackBotId;
         this.slackSession = SlackSessionFactory.createWebSocketSlackSession(slackToken);
@@ -38,6 +41,7 @@ public class SousChef {
         this.conversationService = new ConversationService(ConversationService.VERSION_DATE_2016_07_11);
         this.conversationService.setUsernameAndPassword(conversationUsername, conversationPassword);
         this.conversationWorkspaceId = conversationWorkspaceId;
+        this.snsClient = snsClient;
     }
 
     public void run() throws Exception {
@@ -111,6 +115,7 @@ public class SousChef {
             Vertex user = this.recipeStore.addUser(state.getUserId());
             state.setUser(user);
         }
+        this.sendStartMessageToSns(state);
         String reply = "";
         for (String text : ((ArrayList<String>) response.getOutput().get("text"))) {
             reply += text + "\n";
@@ -118,20 +123,22 @@ public class SousChef {
         return reply;
     }
 
+    private void sendStartMessageToSns(UserState state) {
+        if (! state.isConversationStarted()) {
+            state.setConversationStarted(true);
+            this.snsClient.postStartMessage(state);
+        }
+    }
+
     private String handleFavoritesMessage(UserState state) throws Exception {
-        JSONArray recipes = this.recipeStore.findFavoriteRecipesForUser(state.getUser(), 5);
+        JSONArray recipes = this.recipeStore.findFavoriteRecipesForUser(state.getUser(), MAX_RECIPES);
         // update state
         state.getConversationContext().put("recipes", recipes);
         state.setIngredientCuisine(null);
-        // return the response
-        String response = "Let's see here...\nI've found these recipes: \n";
-        for (int i = 0; i < recipes.length(); i++) {
-            response += (i + 1) + ". " + recipes.getJSONObject(i).getString("title") + "\n";
-        }
-        response += "\nPlease enter the corresponding number of your choice.";
-        return response;
+        // post to sns and return response
+        this.snsClient.postFavoritesMessage(state);
+        return this.getRecipeListResponse(recipes);
     }
-
 
     private String handleIngredientsMessage(UserState state, String message) throws Exception {
         // we want to get a list of recipes based on the ingredients (message)
@@ -141,7 +148,31 @@ public class SousChef {
         Vertex ingredient = this.recipeStore.findIngredient(ingredientsStr);
         if (ingredient != null) {
             logger.debug(String.format("Ingredient exists for %s. Returning recipes from datastore.", ingredientsStr));
-            matchingRecipes = new JSONArray(ingredient.getPropertyValue("detail").toString());
+            // get recipes from datastore
+            matchingRecipes = new JSONArray();
+            JSONObject recipe;
+            List<String> recipeIds = new ArrayList<>();
+            // get recommended recipes first
+            JSONArray recommendedRecipes = this.recipeStore.findRecommendedRecipesForIngredient(ingredientsStr, state.getUser(), MAX_RECIPES);
+            for (int i=0; i<recommendedRecipes.length(); i++) {
+                recipe = recommendedRecipes.getJSONObject(i);
+                recipe.append("recommended", true);
+                recipeIds.add(recipe.getString("id"));
+                matchingRecipes.add(recipe);
+            }
+            if (matchingRecipes.length() < MAX_RECIPES) {
+                JSONArray recipes = new JSONArray(ingredient.getPropertyValue("detail").toString());
+                for (int i=0; i<recipes.length(); i++) {
+                    recipe = recipes.getJSONObject(i);
+                    if (! recipeIds.contains(recipe.getString("id"))) {
+                        recipeIds.add(recipe.getString("id"));
+                        matchingRecipes.add(recipe);
+                        if (matchingRecipes.length() >= MAX_RECIPES) {
+                            break;
+                        }
+                    }
+                }
+            }
             // increment the count on the user-ingredient
             this.recipeStore.recordIngredientRequestForUser(ingredient, state.getUser());
         }
@@ -155,13 +186,9 @@ public class SousChef {
         // update state
         state.getConversationContext().put("recipes", matchingRecipes);
         state.setIngredientCuisine(ingredient);
-        // return the response
-        String response = "Let's see here...\nI've found these recipes: \n";
-        for (int i = 0; i < matchingRecipes.length(); i++) {
-            response += (i + 1) + ". " + matchingRecipes.getJSONObject(i).getString("title") + "\n";
-        }
-        response += "\nPlease enter the corresponding number of your choice.";
-        return response;
+        // post to sns and return response
+        this.snsClient.postIngredientMessage(state, ingredientsStr);
+        return this.getRecipeListResponse(matchingRecipes);
     }
 
     private String handleCuisineMessage(UserState state, String message) throws Exception {
@@ -172,7 +199,31 @@ public class SousChef {
         Vertex cuisine = this.recipeStore.findCuisine(cuisineStr);
         if (cuisine != null) {
             logger.debug(String.format("Cuisine exists for %s. Returning recipes from datastore.", cuisineStr));
-            matchingRecipes = new JSONArray(cuisine.getPropertyValue("detail").toString());
+            // get recipes from datastore
+            matchingRecipes = new JSONArray();
+            JSONObject recipe;
+            List<String> recipeIds = new ArrayList<>();
+            // get recommended recipes first
+            JSONArray recommendedRecipes = this.recipeStore.findRecommendedRecipesForCuisine(cuisineStr, state.getUser(), MAX_RECIPES);
+            for (int i=0; i<recommendedRecipes.length(); i++) {
+                recipe = recommendedRecipes.getJSONObject(i);
+                recipe.append("recommended", true);
+                recipeIds.add(recipe.getString("id"));
+                matchingRecipes.add(recipe);
+            }
+            if (matchingRecipes.length() < MAX_RECIPES) {
+                JSONArray recipes = new JSONArray(cuisine.getPropertyValue("detail").toString());
+                for (int i=0; i<recipes.length(); i++) {
+                    recipe = recipes.getJSONObject(i);
+                    if (! recipeIds.contains(recipe.getString("id"))) {
+                        recipeIds.add(recipe.getString("id"));
+                        matchingRecipes.add(recipe);
+                        if (matchingRecipes.length() >= MAX_RECIPES) {
+                            break;
+                        }
+                    }
+                }
+            }
             // increment the count on the user-cuisine
             this.recipeStore.recordCuisineRequestForUser(cuisine, state.getUser());
         }
@@ -186,17 +237,13 @@ public class SousChef {
         // update state
         state.getConversationContext().put("recipes", matchingRecipes);
         state.setIngredientCuisine(cuisine);
-        // return the response
-        String response = "Let's see here...\nI've found these recipes: \n";
-        for (int i = 0; i < matchingRecipes.length(); i++) {
-            response += (i + 1) + ". " + matchingRecipes.getJSONObject(i).getString("title") + "\n";
-        }
-        response += "\nPlease enter the corresponding number of your choice.";
-        return response;
+        // post to sns and return response
+        this.snsClient.postCuisineMessage(state, cuisineStr);
+        return this.getRecipeListResponse(matchingRecipes);
     }
 
     private String handleSelectionMessage(UserState state, int selection) throws Exception {
-        if (selection >= 1 && selection <= 5) {
+        if (selection >= 1 && selection <= MAX_RECIPES) {
             // we want to get a the recipe based on the selection
             // first we see if we already have the recipe in our datastore
             ArrayList recipes = (ArrayList)state.getConversationContext().get("recipes");
@@ -213,23 +260,48 @@ public class SousChef {
                 logger.debug(String.format("Recipe does not exist for %s. Querying Spoonacular for details.", recipeId));
                 JSONObject recipeInfo = this.recipeClient.getInfoById(recipeId);
                 JSONArray recipeSteps = this.recipeClient.getStepsById(recipeId);
-                recipeDetail = this.makeFormattedSteps(recipeInfo, recipeSteps);
+                recipeDetail = this.getRecipeInstructionsResponse(recipeInfo, recipeSteps);
                 // add recipe to datastore
-                this.recipeStore.addRecipe(recipeId, recipeInfo.getString("title"), recipeDetail, state.getIngredientCuisine(), state.getUser());
+                recipe = this.recipeStore.addRecipe(recipeId, recipeInfo.getString("title"), recipeDetail, state.getIngredientCuisine(), state.getUser());
             }
-            // clear out state
-            state.setIngredientCuisine(null);
-            state.setConversationContext(null);
+            // post to sns and clear state
+            this.snsClient.postRecipeMessage(state, recipeId, recipe.getPropertyValue("title").toString());
+            this.clearUserState(state);
             // return response
             return recipeDetail;
         }
         else {
-            state.getConversationContext().put("selection_valid", Boolean.FALSE);
-            return "Invalid selection! Say anything to see your choices again...";
+            // clear state and return response
+            this.clearUserState(state);
+            return "Invalid selection! Say anything to start over...";
         }
     }
 
-    private String makeFormattedSteps(JSONObject recipeInfo, JSONArray recipeSteps) throws Exception {
+    private void clearUserState(UserState state) {
+        state.setIngredientCuisine(null);
+        state.setConversationContext(null);
+        state.setConversationStarted(false);
+    }
+
+    private String getRecipeListResponse(JSONArray recipes) throws Exception {
+        String response = "Let's see here...\nI've found these recipes: \n";
+        JSONObject recipe;
+        for (int i = 0; i < recipes.length(); i++) {
+            recipe = recipes.getJSONObject(i);
+            response += (i + 1) + ". " + recipe.getString("title");
+            if (recipe.has("recommended")) {
+                int users = recipe.getInt("recommendedUserCount");
+                String s1 = (users==1?"":"s");
+                String s2 = (users==1?"s":"");
+                response += " *(" + users + " other user" + s1 + " like" + s2 + " this)";
+            }
+            response += "\n";
+        }
+        response += "\nPlease enter the corresponding number of your choice.";
+        return response;
+    }
+
+    private String getRecipeInstructionsResponse(JSONObject recipeInfo, JSONArray recipeSteps) throws Exception {
         String response = "Ok, it takes *";
         response += recipeInfo.get("readyInMinutes").toString() + "* minutes to make *";
         response += recipeInfo.get("servings").toString() + "* servings of *";

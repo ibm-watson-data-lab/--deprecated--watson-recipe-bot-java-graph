@@ -13,6 +13,7 @@ public class UserState {
     private Vertex user;
     private Vertex ingredientCuisine;
     private Map<String,Object> conversationContext;
+    private boolean conversationStarted;
 
     public UserState(String userId) {
         this.userId = userId;
@@ -44,5 +45,13 @@ public class UserState {
 
     public void setConversationContext(Map<String, Object> conversationContext) {
         this.conversationContext = conversationContext;
+    }
+
+    public boolean isConversationStarted() {
+        return conversationStarted;
+    }
+
+    public void setConversationStarted(boolean conversationStarted) {
+        this.conversationStarted = conversationStarted;
     }
 }
