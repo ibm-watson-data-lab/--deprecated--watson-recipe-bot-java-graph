@@ -273,6 +273,27 @@ public class GraphRecipeStore {
     }
 
     /**
+     * Adds a new recipe to Graph if a recipe with the specified name does not already exist.
+     * @param recipeId - The ID of the recipe (typically the ID of the recipe returned from Spoonacular)
+     * @param recipeTitle - The title of the recipe
+     * @param recipeDetail - The detailed instructions for making the recipe
+     * @param ingredientCuisineVertex - The existing Graph vertex for either the ingredient or cuisine selected before the recipe
+     * @param userVertex - The existing Graph vertex for the user
+     * @return - The recipe vertex
+     * @throws Exception
+     */
+    public Vertex addRecipe(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
+        Vertex recipeVertex = new Vertex("recipe", new HashMap() {{
+            put("name", getUniqueRecipeName(recipeId));
+            put("title", recipeTitle.trim());
+            put("detail", recipeDetail);
+        }});
+        recipeVertex = this.addVertexIfNotExists(recipeVertex, "name");
+        this.recordRecipeRequestForUser(recipeVertex, ingredientCuisineVertex, userVertex);
+        return recipeVertex;
+    }
+
+    /**
      * Finds the user's favorite recipes in Graph.
      * @param userVertex - The existing Graph vertex for the user
      * @param count - The max number of recipes to return
@@ -295,7 +316,7 @@ public class GraphRecipeStore {
     }
 
     /**
-     * Recommends recipes based on popular recipes using the specified ingredient.
+     * Finds popular recipes using the specified ingredient.
      * @param ingredientsStr - The ingredient or comma-separated list of ingredients specified by the user
      * @param userVertex - The Graph vertex for the user requesting recommended recipes
      * @param count - The max number of recipes to return
@@ -306,13 +327,13 @@ public class GraphRecipeStore {
         ingredientsStr = this.getUniqueIngredientsName(ingredientsStr);
         String query = "g.V().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\")";
         query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
-        query += ".outE().has(\"count\",gt(1)).inV().hasLabel(\"recipe\")";
+        query += ".outE().has(\"count\",gt(1)).order().by(\"count\", decr).inV().hasLabel(\"recipe\")";
         query += ".inE().outV().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\").path()";
         return getRecommendedRecipes(query, count);
     }
 
     /**
-     * Recommends recipes based on popular recipes using the specified ingredient.
+     * Finds popular recipes using the specified cuisine.
      * @param cuisine - The cuisine specified by the user
      * @param userVertex - The Graph vertex for the user requesting recommended recipes
      * @param count - The max number of recipes to return
@@ -323,7 +344,7 @@ public class GraphRecipeStore {
         cuisine = this. getUniqueCuisineName(cuisine);
         String query = "g.V().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\")";
         query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
-        query += ".outE().has(\"count\",gt(1)).inV().hasLabel(\"recipe\")";
+        query += ".outE().has(\"count\",gt(1)).order().by(\"count\", decr).inV().hasLabel(\"recipe\")";
         query += ".inE().outV().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\").path()";
         return getRecommendedRecipes(query, count);
     }
@@ -354,27 +375,6 @@ public class GraphRecipeStore {
             }
         }
         return recipes;
-    }
-
-    /**
-     * Adds a new recipe to Graph if a recipe with the specified name does not already exist.
-     * @param recipeId - The ID of the recipe (typically the ID of the recipe returned from Spoonacular)
-     * @param recipeTitle - The title of the recipe
-     * @param recipeDetail - The detailed instructions for making the recipe
-     * @param ingredientCuisineVertex - The existing Graph vertex for either the ingredient or cuisine selected before the recipe
-     * @param userVertex - The existing Graph vertex for the user
-     * @return - The recipe vertex
-     * @throws Exception
-     */
-    public Vertex addRecipe(final String recipeId, final String recipeTitle, final String recipeDetail, Vertex ingredientCuisineVertex, Vertex userVertex) throws Exception {
-        Vertex recipeVertex = new Vertex("recipe", new HashMap() {{
-            put("name", getUniqueRecipeName(recipeId));
-            put("title", recipeTitle.trim());
-            put("detail", recipeDetail);
-        }});
-        recipeVertex = this.addVertexIfNotExists(recipeVertex, "name");
-        this.recordRecipeRequestForUser(recipeVertex, ingredientCuisineVertex, userVertex);
-        return recipeVertex;
     }
 
     /**
