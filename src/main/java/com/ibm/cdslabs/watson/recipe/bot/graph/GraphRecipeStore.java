@@ -326,9 +326,10 @@ public class GraphRecipeStore {
     public JSONArray findRecommendedRecipesForIngredient(String ingredientsStr, Vertex userVertex, int count) throws Exception {
         ingredientsStr = this.getUniqueIngredientsName(ingredientsStr);
         String query = "g.V().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\")";
-        query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
-        query += ".outE().has(\"count\",gt(1)).order().by(\"count\", decr).inV().hasLabel(\"recipe\")";
-        query += ".inE().outV().hasLabel(\"ingredient\").has(\"name\",\"" + ingredientsStr + "\").path()";
+        query += ".in(\"has\")";
+        query += ".inE().has(\"count\",gt(1)).order().by(\"count\", decr)";
+        query += ".outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
+        query += ".path()";
         return getRecommendedRecipes(query, count);
     }
 
@@ -343,9 +344,10 @@ public class GraphRecipeStore {
     public JSONArray findRecommendedRecipesForCuisine(String cuisine, Vertex userVertex, int count) throws Exception {
         cuisine = this. getUniqueCuisineName(cuisine);
         String query = "g.V().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\")";
-        query += ".inE().outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
-        query += ".outE().has(\"count\",gt(1)).order().by(\"count\", decr).inV().hasLabel(\"recipe\")";
-        query += ".inE().outV().hasLabel(\"cuisine\").has(\"name\",\"" + cuisine + "\").path()";
+        query += ".in(\"has\")";
+        query += ".inE().has(\"count\",gt(1)).order().by(\"count\", decr)";
+        query += ".outV().hasLabel(\"person\").has(\"name\",neq(\"" + userVertex.getPropertyValue("name") + "\"))";
+        query += ".path()";
         return getRecommendedRecipes(query, count);
     }
 
@@ -356,7 +358,7 @@ public class GraphRecipeStore {
         JSONArray recipes = new JSONArray();
         while(iterator.hasNext()) {
             Path path = Path.fromJSONObject(iterator.next());
-            Vertex recipeVertex = (Vertex)path.getObjects()[4];
+            Vertex recipeVertex = (Vertex)path.getObjects()[1];
             String recipeId = recipeVertex.getPropertyValue("name").toString();
             JSONObject recipe = recipeHash.get(recipeId);
             if (recipe == null) {
@@ -393,12 +395,17 @@ public class GraphRecipeStore {
             put("count", new Integer(1));
         }});
         this.addUpdateEdge(userRecipeEdge);
-        // add one edge from the ingredient/cuisine to the recipe
+        // add "selects" edge from the ingredient/cuisine to the recipe
         if (ingredientCuisineVertex != null) {
             Edge ingredientCusisineRecipeEdge = new Edge("selects", ingredientCuisineVertex.getId(), recipeVertex.getId(), new HashMap() {{
                 put("count", new Integer(1));
             }});
             this.addUpdateEdge(ingredientCusisineRecipeEdge);
+        }
+        // add "has" edge from the recipe to the ingredient/cuisine
+        if (ingredientCuisineVertex != null) {
+            Edge recipeIngredientCuisineEdge = new Edge("has", recipeVertex.getId(), ingredientCuisineVertex.getId());
+            this.addEdgeIfNotExists(recipeIngredientCuisineEdge);
         }
     }
 
@@ -461,6 +468,27 @@ public class GraphRecipeStore {
             logger.debug(String.format("Returning %s vertex where %s=%s", vertex.getLabel(), uniquePropertyName, propertyValue));
             vertex = iterator.next();
             return vertex;
+        }
+    }
+
+    /**
+     * Adds a new edge to Graph if an edge with the same out_v and in_v does not exist.
+     * @param edge - The edge to add
+     * @return - The edge that was added or updated
+     * @throws Exception
+     */
+    private Edge addEdgeIfNotExists(Edge edge) throws Exception {
+        String query = "g.V(" + edge.getOutV() + ").outE().inV().hasId(" + edge.getInV() + ").path()";
+        ResultSet resultSet = this.graphClient.executeGremlin(query);
+        Iterator<JSONObject> iterator = resultSet.getJSONObjectResultIterator();
+        if (! iterator.hasNext()) {
+            logger.debug((String.format("Creating edge from %s to %s",edge.getOutV(),edge.getInV())));
+            return this.graphClient.addEdge(edge);
+        }
+        else {
+            logger.debug(String.format("Edge from %s to %s exists.",edge.getOutV(),edge.getInV()));
+            Path path = Path.fromJSONObject(iterator.next());
+            return (Edge)path.getObjects()[1];
         }
     }
 
